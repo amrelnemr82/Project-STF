@@ -1,0 +1,91 @@
+flowchart TD
+
+    A["Raw Data\nSetting_timeX.xlsx\n(single sheet: mix proportions +\nIST/FST/Remarks for 21 trials)"] --> B["Step 1: Data Loading\nParse mix design, setting times, and remarks"]
+
+    B --> C["Step 2: Data Cleaning"]
+    C --> C1["Standardize activator concentration units\n(Molarity '12M' vs w/w '48% Na2O' vs '8.15% Na2O')"]
+    C --> C2["Flag / remove invalid trials\n(Trial 2: solid formation, Trial 17: no set)"]
+    C --> C3["Resolve missing ratios\n(Na2SiO3/NaOH = '-' when Na2SiO3 = 0 -> set 0 + add flag)"]
+    C --> C4["Type casting: numeric columns, strip units, handle NaN"]
+    C --> C5["Outlier / consistency check\n(mass balance: NaOH_g + Na2SiO3_g + H2O_g vs L/S, Alk/Bi)"]
+
+    C1 --> D["Step 3: Feature Engineering"]
+    C2 --> D
+    C3 --> D
+    C4 --> D
+    C5 --> D
+
+    D --> D1["Core mix features (literature-defined):\nNa2O% dosage, Silica Modulus\n(Ms = SiO2_activator / Na2O_activator),\nLiquid/Solid (L/S = activator solution mass /\nslag mass), Alkali/Binder (Alk/Bi),\nNa2SiO3/NaOH ratio, NaOH concentration"]
+    D --> D2["Derived features:\nTotal alkaline solution mass,\nWater/Binder ratio, Solid activator fraction,\nNaOH/Binder & Na2SiO3/Binder ratios"]
+    D --> D3["Target engineering:\nInitial Setting Time (IST), Final Setting Time (FST),\nWorkability class from Remarks\n(Normal / High flowability / Stiff / Fair+shrinkage / Failed)"]
+    D --> D4["Domain equations documented (from literature):\nMs = SiO2(activator) / Na2O(activator);\nNa2O contributed by NaOH via molar\nconversion (Na2O/2NaOH = 62/80 = 0.775)\nand by Na2SiO3 via its assay (~9-10% Na2O);\nL/S = mass(NaOH soln + Na2SiO3 soln + extra water)\n/ mass(slag); sourced from Ryu et al. 2019\n(Materials 12(13):2072) and related AAS literature"]
+
+    D1 --> E["Step 4: Exploratory Data Analysis"]
+    D2 --> E
+    D3 --> E
+    D4 --> E
+    E --> E1["Descriptive statistics:\nmean, std, min/max, skewness,\nkurtosis per feature and target"]
+    E --> E2["Correlation heatmap:\nPearson r across all mix features\n+ IST/FST (matrix + numeric annotations)"]
+    E --> E3["Distribution histograms:\nper-feature shape + skewness label\n(n is small: 19-21 usable trials)"]
+    E --> E4["Strong correlation summary:\n|r| >= 0.4 feature-target pairs reported\nnarratively in the Word report"]
+
+    E1 --> F["Step 5: Train/Test Strategy"]
+    E2 --> F
+    E3 --> F
+    E4 --> F
+    F --> F1["Small-sample regime ->\nLeave-One-Out Cross-Validation (LOOCV)\n+ regularization to avoid overfitting"]
+
+    F1 --> G["Step 6: Hybrid Machine Learning Model"]
+    G --> G1["Base learners:\n- Random Forest Regressor (n_estimators=300, max_depth=4)\n- Gradient Boosting Regressor (n_estimators=200,\n  max_depth=2, learning_rate=0.05)\n- MLP (Artificial Neural Network, PSO-tuned)"]
+    G --> G2["Metaheuristic optimization layer:\nParticle Swarm Optimization (PSO)\ntunes ANN hyperparameters"]
+    G --> G3["Hybrid Stacking Ensemble:\nRF + GB + PSO-tuned ANN\ncombined via Ridge meta-learner (alpha=1.0)\n= Hybrid ML Model (HYB)"]
+    G1 --> G3
+    G2 --> G3
+
+    G2 --> G2a["Hyperparameter Search Log\n(recorded across every PSO trial / swarm iteration,\nsaved to aas_pso_hyperparameter_log.csv)"]
+    G2a --> G2b["Search space explored:\n- hidden_layer_size: 6-24 neurons\n- alpha (L2 reg.): 1e-4 - 1e-1 (log-scale)\n- learning_rate_init: 1e-3 - 3.16e-2 (log-scale)"]
+    G2a --> G2c["Per-trial record:\nparticle id, iteration no., candidate\n(hidden, alpha, lr), K-fold RMSE proxy,\npersonal-best & global-best score"]
+    G2a --> G2d["Selection rule:\nbest global particle after 6 particles x 6\niterations = final ANN config used in the stack"]
+    G2a --> G2e["PSO swarm hyperparameters:\n- n_particles = 6, n_iterations = 6\n- inertia weight w = 0.6\n- cognitive coeff. c1 = 1.5\n- social coeff. c2 = 1.5\n- fitness = 5-fold RMSE proxy per candidate\n- ANN inner training: max_iter = 400 (search) /\n  1500 (final refit), fixed random_state = 42"]
+    G2b --> G3
+    G2c --> G3
+    G2d --> G3
+    G2e --> G3
+
+    G3 --> H["Step 7: Model Evaluation"]
+    H --> H1["Regression metrics (per target: IST, FST)\nreported under LOOCV:\n- R^2 (coefficient of determination)\n- MSE (Mean Squared Error)\n- RMSE (Root Mean Squared Error)\n- MAE (Mean Absolute Error)"]
+    H --> H2["Per-base-learner comparison:\nRF vs GB vs PSO-ANN vs Hybrid Stack\n(bar-chart figures, to justify hybridization)"]
+    H --> H3["Workability Classifier metrics:\nLOOCV accuracy + confusion matrix figure\n(Random Forest Classifier)"]
+    H --> H4["PSO convergence figure:\nbest-so-far fitness vs iteration, per target"]
+
+    H1 --> S["Step 8: Sensitivity Analysis"]
+    H2 --> S
+    H3 --> S
+    H4 --> S
+    S --> S0{"Is the shap package\ninstalled?"}
+    S0 -->|Yes| S1["SHAP TreeExplainer on RF & GB base learners\n+ SHAP Permutation Explainer on the full hybrid\nstack (model-agnostic wrapper)"]
+    S1 --> S2["Global sensitivity:\nmean |SHAP value| ranking\n-> which mix parameters drive IST/FST most"]
+    S1 --> S3["Local sensitivity:\nper-mix SHAP explanation\n-> how each feature pushes an individual\nprediction up/down from the baseline"]
+    S1 --> S4["Interaction effects:\nSHAP interaction values (RandomForest)"]
+    S0 -->|No -- verified fallback| S5["scikit-learn Permutation Importance\n(global sensitivity, no extra dependency)\n+ manual Partial Dependence sweep\nfor the top-3 features (marginal sensitivity)"]
+
+    S2 --> I["Step 9: Equation / Surrogate Extraction"]
+    S3 --> I
+    S4 --> I
+    S5 --> I
+    I --> I1["Use sensitivity-ranked top features to fit an\ninterpretable polynomial / response-surface\nequation approximating the hybrid model\n(for transparency in the UI)"]
+    I --> I2["Serialize full hybrid model + scaler\n(joblib .pkl) for direct use in UI backend"]
+
+    I1 --> J["Step 10: Mix Design User Interface"]
+    I2 --> J
+    J --> J1["FORWARD MODE:\nUser enters mix (NaOH, Na2SiO3, L/S, Alk/Bi, MS)\n-> UI predicts IST, FST, workability class\n+ shows sensitivity-based explanation of the prediction"]
+    J --> J2["INVERSE MODE:\nUser enters target setting time range\n+ desired workability\n-> Metaheuristic search (GA) over feasible\nmix-design space using hybrid model as\nfitness function -> suggests mix proportions"]
+
+    J2 --> J2a["GA optimizer hyperparameters:\n- population size = 40, generations = 40\n- selection: elitism, top 20% of population kept\n- crossover: blend (alpha-weighted average\n  of two parents, alpha ~ U(0,1) per gene)\n- mutation: Gaussian, 20% gene-wise\n  probability, sigma = 5% of feature range\n- bounds per feature = observed min/max\n  from the cleaned training data\n- fitness = distance-to-target-range penalty\n  on predicted IST/FST + (1 - predicted\n  probability of target workability class)"]
+    J2a --> K
+
+    J1 --> K["Step 11: Validation & Feedback Loop"]
+    J2 --> K
+    K --> K1["Lab-cast suggested mix -> measure actual\nIST/FST/workability -> append to dataset\n-> retrain hybrid model + rerun sensitivity analysis periodically"]
+
+    K1 --> L["Step 12: Publish\nGitHub repo (README, requirements.txt,\nruntime.txt, .gitignore) -> Streamlit\nCommunity Cloud deployment (public URL)"]

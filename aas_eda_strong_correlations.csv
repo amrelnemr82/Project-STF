@@ -1,0 +1,10 @@
+feature,target,pearson_r
+water_binder_ratio,FST,0.872621471677868
+solid_activator_fraction,FST,0.8605135427953665
+NaOH_conc_value,FST,0.7906223139698656
+water_binder_ratio,IST,0.7246519627857687
+solid_activator_fraction,IST,0.7166150532643448
+NaOH_conc_value,IST,0.6080304571528136
+Na2O_pct,FST,-0.5809591739125987
+NaOH_binder_ratio,FST,-0.5253677403518789
+Na2O_pct,IST,-0.4715349243812036
