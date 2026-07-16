@@ -96,7 +96,20 @@ def load_data(path: str) -> pd.DataFrame:
     ]
 
     if "Specimens and results" in xls.sheet_names:
+        # Read the data
         df = pd.read_excel(path, sheet_name="Specimens and results", header=None, skiprows=3).iloc[:21]
+        
+        # Drop any completely empty columns (like columns M, N, etc. that have no data)
+        df = df.dropna(axis=1, how='all')
+        
+        # If we still have more columns than expected, truncate
+        if len(df.columns) > len(columns):
+            df = df.iloc[:, :len(columns)]
+        # If we have fewer columns, pad with NaN columns
+        elif len(df.columns) < len(columns):
+            for _ in range(len(columns) - len(df.columns)):
+                df[len(df.columns)] = np.nan
+        
         df.columns = columns
         return df
 
@@ -521,8 +534,8 @@ def main(path: str):
     eda.run_eda(df_valid, FEATURE_COLS, ["IST", "FST"], out_prefix="aas_eda")
 
     print("\nStep 4-6: Hybrid ML models (RF + GB + PSO-ANN -> Ridge stack), LOOCV evaluation")
-    hybrid_ist, metrics_ist, pso_log_ist = train_hybrid_model(X, y_ist, "Initial Setting Time (IST)")
-    hybrid_fst, metrics_fst, pso_log_fst = train_hybrid_model(X, y_fst, "Final Setting Time (FST)")
+    hybrid_ist, metrics_ist, pso_log_ist, _ = train_hybrid_model(X, y_ist, "Initial Setting Time (IST)")
+    hybrid_fst, metrics_fst, pso_log_fst, _ = train_hybrid_model(X, y_fst, "Final Setting Time (FST)")
 
     metrics_table = pd.concat([metrics_ist, metrics_fst], ignore_index=True)
     metrics_table.to_csv("aas_model_metrics_comparison.csv", index=False)
